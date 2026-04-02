@@ -1,0 +1,8 @@
+# Core requirements for using this application
+#
+# These are provided by edx-platform at runtime:
+# Django, djangorestframework, opaque-keys, edx-django-utils
+#
+# This file intentionally has no direct dependencies since
+# the plugin runs inside the LMS/CMS process.
+-c constraints.txt

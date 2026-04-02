@@ -1,0 +1,289 @@
+"""
+Core business logic for group_selection_plugin.
+"""
+
+import logging
+
+from django.db import transaction
+
+from openedx.core.djangoapps.course_groups.cohorts import (
+    add_user_to_cohort,
+    set_course_cohorted,
+)
+from openedx.core.djangoapps.course_groups.models import (
+    CourseUserGroup,
+    CourseUserGroupPartitionGroup,
+)
+from common.djangoapps.student.models import CourseEnrollment
+from common.djangoapps.student.roles import CourseStaffRole, CourseInstructorRole
+
+from .exceptions import (
+    CohortCreationFailedException,
+    InvalidChoiceException,
+    NotEnrolledException,
+    NotStaffException,
+    SelectionLockedException,
+)
+from .models import LearnerSelection, SelectionEvent
+
+log = logging.getLogger(__name__)
+
+
+def ensure_cohorts_for_block(course_key, block_config):
+    """
+    Ensure cohort infrastructure is ready for a Group Selection block.
+
+    Called when XBlock configuration is saved in Studio. For each mapped
+    content group, creates a cohort and links it if one doesn't already exist.
+
+    Returns:
+        List of dicts with cohort mapping info for each choice.
+    """
+    set_course_cohorted(course_key, True)
+    log.info("Ensured cohorts enabled for course %s", course_key)
+
+    cohort_mappings = []
+
+    for choice_id in block_config["choices"]:
+        group_id = block_config["choice_group_map"][choice_id]
+        partition_id = block_config["choice_partition_map"][choice_id]
+
+        existing_link = CourseUserGroupPartitionGroup.objects.filter(
+            partition_id=partition_id,
+            group_id=group_id,
+            course_user_group__course_id=course_key,
+        ).select_related("course_user_group").first()
+
+        if existing_link:
+            cohort_mappings.append({
+                "choice_id": choice_id,
+                "cohort_id": existing_link.course_user_group.id,
+                "cohort_name": existing_link.course_user_group.name,
+                "content_group_id": group_id,
+                "partition_id": partition_id,
+                "created": False,
+            })
+            continue
+
+        group_name = block_config.get("choice_names", {}).get(choice_id, f"Group {choice_id}")
+
+        cohort = CourseUserGroup.objects.create(
+            name=group_name,
+            course_id=course_key,
+            group_type=CourseUserGroup.COHORT,
+        )
+        CourseUserGroupPartitionGroup.objects.create(
+            course_user_group=cohort,
+            partition_id=partition_id,
+            group_id=group_id,
+        )
+        log.info(
+            "Created cohort '%s' (id=%d) for course %s, partition_id=%d, group_id=%d",
+            group_name, cohort.id, course_key, partition_id, group_id,
+        )
+
+        cohort_mappings.append({
+            "choice_id": choice_id,
+            "cohort_id": cohort.id,
+            "cohort_name": group_name,
+            "content_group_id": group_id,
+            "partition_id": partition_id,
+            "created": True,
+        })
+
+    return cohort_mappings
+
+
+def _find_cohort_for_content_group(course_key, partition_id, group_id):
+    """
+    Find the cohort linked to a specific content group.
+
+    Returns:
+        CourseUserGroup instance or None.
+    """
+    link = CourseUserGroupPartitionGroup.objects.filter(
+        partition_id=partition_id,
+        group_id=group_id,
+        course_user_group__course_id=course_key,
+    ).select_related("course_user_group").first()
+
+    if link:
+        return link.course_user_group
+    return None
+
+
+def _resolve_cohort_for_choice(course_key, choice_id, block_config):
+    """
+    Validate a choice and find its linked cohort, auto-creating if needed.
+
+    Returns:
+        Tuple of (group_id, partition_id, cohort).
+    """
+    if choice_id not in block_config["choices"]:
+        raise InvalidChoiceException(
+            f"Choice '{choice_id}' is not valid"
+        )
+
+    group_id = block_config["choice_group_map"][choice_id]
+    partition_id = block_config["choice_partition_map"][choice_id]
+
+    cohort = _find_cohort_for_content_group(course_key, partition_id, group_id)
+    if cohort is None:
+        # Fallback: auto-create cohorts and retry.
+        log.info(
+            "Cohort not found for group_id=%d, partition_id=%d in course %s. "
+            "Running ensure_cohorts_for_block as fallback.",
+            group_id, partition_id, course_key,
+        )
+        ensure_cohorts_for_block(course_key, block_config)
+        cohort = _find_cohort_for_content_group(course_key, partition_id, group_id)
+        if cohort is None:
+            raise CohortCreationFailedException(
+                f"Could not find or create cohort for content group "
+                f"(partition_id={partition_id}, group_id={group_id}) in course {course_key}"
+            )
+
+    return group_id, partition_id, cohort
+
+
+def _assign_to_cohort(user, cohort, course_key):
+    """Assign a user to a cohort, treating 'already a member' as success."""
+    try:
+        add_user_to_cohort(cohort, user)
+        log.info(
+            "Assigned user %d to cohort '%s' (id=%d) in course %s",
+            user.id, cohort.name, cohort.id, course_key,
+        )
+    except ValueError:
+        log.info(
+            "User %d already in cohort '%s' (id=%d) in course %s",
+            user.id, cohort.name, cohort.id, course_key,
+        )
+
+
+def _save_selection_and_log_event(
+    user, course_key, usage_key, choice_id, group_id, cohort, event_type, acted_by,
+):
+    """
+    Create or update LearnerSelection and log a SelectionEvent.
+
+    Returns:
+        The created or updated LearnerSelection.
+    """
+    existing = LearnerSelection.objects.filter(user=user, usage_key=usage_key).first()
+
+    if existing:
+        previous_choice_id = existing.choice_id
+        previous_content_group_id = existing.content_group_id
+        existing.choice_id = choice_id
+        existing.content_group_id = group_id
+        existing.cohort_id = cohort.id
+        existing.save()
+        selection = existing
+    else:
+        previous_choice_id = None
+        previous_content_group_id = None
+        selection = LearnerSelection.objects.create(
+            user=user,
+            course_key=course_key,
+            usage_key=usage_key,
+            choice_id=choice_id,
+            content_group_id=group_id,
+            cohort_id=cohort.id,
+        )
+
+    SelectionEvent.objects.create(
+        user=user,
+        course_key=course_key,
+        usage_key=usage_key,
+        event_type=event_type,
+        previous_choice_id=previous_choice_id,
+        new_choice_id=choice_id,
+        previous_content_group_id=previous_content_group_id,
+        new_content_group_id=group_id,
+        acted_by=acted_by,
+    )
+
+    return selection
+
+
+@transaction.atomic
+def submit_selection(user, usage_key, course_key, choice_id, block_config):
+    """
+    Submit or update a learner's group selection.
+
+    Returns:
+        The created or updated LearnerSelection.
+    """
+    if not CourseEnrollment.is_enrolled(user, course_key):
+        raise NotEnrolledException(
+            f"User {user.id} is not enrolled in course {course_key}"
+        )
+
+    existing = LearnerSelection.objects.filter(user=user, usage_key=usage_key).first()
+    if existing and not block_config.get("allow_change", False):
+        raise SelectionLockedException(
+            f"User {user.id} already has a selection for block {usage_key} and changes are not allowed"
+        )
+
+    group_id, _, cohort = _resolve_cohort_for_choice(
+        course_key, choice_id, block_config,
+    )
+
+    _assign_to_cohort(user, cohort, course_key)
+
+    event_type = (
+        SelectionEvent.EventType.CHANGED if existing
+        else SelectionEvent.EventType.SELECTED
+    )
+    return _save_selection_and_log_event(
+        user, course_key, usage_key, choice_id, group_id, cohort, event_type, acted_by=user,
+    )
+
+
+@transaction.atomic
+def staff_override_selection(staff_user, target_user, usage_key, course_key, choice_id, block_config):
+    """
+    Staff override of a learner's group selection.
+
+    Ignores allow_change policy. Event type is STAFF_OVERRIDE.
+    """
+    if not (CourseStaffRole(course_key).has_user(staff_user) or
+            CourseInstructorRole(course_key).has_user(staff_user)):
+        raise NotStaffException(
+            f"User {staff_user.id} does not have staff/instructor role on course {course_key}"
+        )
+
+    group_id, _, cohort = _resolve_cohort_for_choice(
+        course_key, choice_id, block_config,
+    )
+
+    _assign_to_cohort(target_user, cohort, course_key)
+
+    return _save_selection_and_log_event(
+        target_user, course_key, usage_key, choice_id, group_id, cohort,
+        SelectionEvent.EventType.STAFF_OVERRIDE, acted_by=staff_user,
+    )
+
+
+def get_learner_selection(user, usage_key):
+    """
+    Get the current selection for a learner on a block.
+
+    Returns:
+        LearnerSelection or None.
+    """
+    return LearnerSelection.objects.filter(user=user, usage_key=usage_key).first()
+
+
+def get_block_selections(usage_key, course_key):
+    """
+    Get all selections for a block (staff-only use).
+
+    Returns:
+        QuerySet of LearnerSelection objects.
+    """
+    return LearnerSelection.objects.filter(
+        usage_key=usage_key,
+        course_key=course_key,
+    ).select_related("user")
