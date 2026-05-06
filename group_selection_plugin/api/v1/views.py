@@ -2,9 +2,13 @@
 API views for group_selection_plugin.
 """
 
+from __future__ import annotations
+
 import logging
+from typing import Any
 
 from django.contrib.auth import get_user_model
+from django.http import HttpRequest
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
@@ -38,15 +42,14 @@ log = logging.getLogger(__name__)
 User = get_user_model()
 
 
-def _get_block_config(usage_key):
+def _get_block_config(usage_key: UsageKey) -> dict[str, Any]:
     """
     Load the XBlock and extract its configuration as a dict.
     """
     block = modulestore().get_item(usage_key)
     return {
         "choices": block.choices,
-        "choice_group_map": block.choice_group_map,
-        "choice_partition_map": block.choice_partition_map,
+        "choice_group_partition_map": block.choice_group_partition_map,
         "choice_names": getattr(block, "choice_names", {}),
         "allow_change": block.allow_change,
     }
@@ -61,7 +64,7 @@ class SelectionSubmitView(APIView):
 
     permission_classes = [IsAuthenticated, IsEnrolledInCourse]
 
-    def post(self, request):
+    def post(self, request: HttpRequest) -> Response:
         serializer = SelectionRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -136,7 +139,7 @@ class SelectionDetailView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, usage_key_str):
+    def get(self, request: HttpRequest, usage_key_str: str) -> Response:
         usage_key = UsageKey.from_string(usage_key_str)
         course_key = usage_key.course_key
 
@@ -188,7 +191,7 @@ class StaffOverrideView(APIView):
 
     permission_classes = [IsAuthenticated, IsCourseStaffOrInstructor]
 
-    def post(self, request):
+    def post(self, request: HttpRequest) -> Response:
         serializer = StaffOverrideRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 

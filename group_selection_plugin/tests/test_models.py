@@ -2,6 +2,8 @@
 Tests for group_selection_plugin models.
 """
 
+from __future__ import annotations
+
 from django.db import IntegrityError
 from django.test import TestCase
 
@@ -13,10 +15,10 @@ from .factories import COURSE_KEY, USAGE_KEY, create_test_user
 class LearnerSelectionModelTest(TestCase):
     """Tests for the LearnerSelection model."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.user = create_test_user()
 
-    def test_create_selection(self):
+    def test_create_selection(self) -> None:
         selection = LearnerSelection.objects.create(
             user=self.user,
             course_key=COURSE_KEY,
@@ -31,7 +33,7 @@ class LearnerSelectionModelTest(TestCase):
         self.assertIsNotNone(selection.created)
         self.assertIsNotNone(selection.modified)
 
-    def test_unique_constraint_user_usage_key(self):
+    def test_unique_constraint_user_usage_key(self) -> None:
         """Only one selection per user per block."""
         LearnerSelection.objects.create(
             user=self.user,
@@ -49,7 +51,7 @@ class LearnerSelectionModelTest(TestCase):
                 content_group_id=2,
             )
 
-    def test_different_users_same_block(self):
+    def test_different_users_same_block(self) -> None:
         """Different users can select on the same block."""
         user2 = create_test_user(username="learner2")
         LearnerSelection.objects.create(
@@ -68,7 +70,7 @@ class LearnerSelectionModelTest(TestCase):
         )
         self.assertEqual(selection2.choice_id, "option_b")
 
-    def test_str_representation(self):
+    def test_str_representation(self) -> None:
         selection = LearnerSelection.objects.create(
             user=self.user,
             course_key=COURSE_KEY,
@@ -82,10 +84,10 @@ class LearnerSelectionModelTest(TestCase):
 class SelectionEventModelTest(TestCase):
     """Tests for the SelectionEvent model."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.user = create_test_user()
 
-    def test_create_selection_event(self):
+    def test_create_selection_event(self) -> None:
         event = SelectionEvent.objects.create(
             user=self.user,
             course_key=COURSE_KEY,
@@ -99,7 +101,7 @@ class SelectionEventModelTest(TestCase):
         self.assertIsNone(event.previous_choice_id)
         self.assertIsNone(event.previous_content_group_id)
 
-    def test_change_event_with_previous(self):
+    def test_change_event_with_previous(self) -> None:
         event = SelectionEvent.objects.create(
             user=self.user,
             course_key=COURSE_KEY,
@@ -114,7 +116,7 @@ class SelectionEventModelTest(TestCase):
         self.assertEqual(event.previous_choice_id, "option_a")
         self.assertEqual(event.new_choice_id, "option_b")
 
-    def test_queryability_by_event_type(self):
+    def test_queryability_by_event_type(self) -> None:
         SelectionEvent.objects.create(
             user=self.user,
             course_key=COURSE_KEY,
@@ -140,7 +142,7 @@ class SelectionEventModelTest(TestCase):
         )
         self.assertEqual(overrides.count(), 1)
 
-    def test_str_representation(self):
+    def test_str_representation(self) -> None:
         event = SelectionEvent.objects.create(
             user=self.user,
             course_key=COURSE_KEY,

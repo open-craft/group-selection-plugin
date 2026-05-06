@@ -4,6 +4,8 @@ Tests for group_selection_plugin API views.
 All edx-platform imports are mocked since they're not available outside the LMS runtime.
 """
 
+from __future__ import annotations
+
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
@@ -34,12 +36,12 @@ PERMISSIONS_MODULE = "group_selection_plugin.api.v1.permissions"
 class SelectionSubmitViewTest(TestCase):
     """Tests for POST /api/group-selection/v1/select/"""
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.factory = APIRequestFactory()
         self.user = create_test_user()
         self.view = SelectionSubmitView.as_view()
 
-    def _post(self, data, user=None):
+    def _post(self, data: dict, user=None):
         request = self.factory.post(
             "/api/group-selection/v1/select/",
             data=data,
@@ -51,7 +53,9 @@ class SelectionSubmitViewTest(TestCase):
     @patch(f"{VIEWS_MODULE}._get_block_config")
     @patch(f"{VIEWS_MODULE}.services.submit_selection")
     @patch(f"{PERMISSIONS_MODULE}.CourseEnrollment")
-    def test_submit_success(self, mock_enrollment, mock_submit, mock_get_config):
+    def test_submit_success(
+        self, mock_enrollment: MagicMock, mock_submit: MagicMock, mock_get_config: MagicMock,
+    ) -> None:
         """Successful selection returns 200 with selection data."""
         mock_enrollment.is_enrolled.return_value = True
         mock_get_config.return_value = BLOCK_CONFIG
@@ -79,7 +83,9 @@ class SelectionSubmitViewTest(TestCase):
     @patch(f"{VIEWS_MODULE}._get_block_config")
     @patch(f"{VIEWS_MODULE}.services.submit_selection")
     @patch(f"{PERMISSIONS_MODULE}.CourseEnrollment")
-    def test_submit_locked_returns_403(self, mock_enrollment, mock_submit, mock_get_config):
+    def test_submit_locked_returns_403(
+        self, mock_enrollment: MagicMock, mock_submit: MagicMock, mock_get_config: MagicMock,
+    ) -> None:
         """Locked selection returns 403."""
         mock_enrollment.is_enrolled.return_value = True
         mock_get_config.return_value = BLOCK_CONFIG_LOCKED
@@ -99,7 +105,9 @@ class SelectionSubmitViewTest(TestCase):
     @patch(f"{VIEWS_MODULE}._get_block_config")
     @patch(f"{VIEWS_MODULE}.services.submit_selection")
     @patch(f"{PERMISSIONS_MODULE}.CourseEnrollment")
-    def test_submit_invalid_choice_returns_400(self, mock_enrollment, mock_submit, mock_get_config):
+    def test_submit_invalid_choice_returns_400(
+        self, mock_enrollment: MagicMock, mock_submit: MagicMock, mock_get_config: MagicMock,
+    ) -> None:
         """Invalid choice returns 400."""
         mock_enrollment.is_enrolled.return_value = True
         mock_get_config.return_value = BLOCK_CONFIG
@@ -119,7 +127,9 @@ class SelectionSubmitViewTest(TestCase):
     @patch(f"{VIEWS_MODULE}._get_block_config")
     @patch(f"{VIEWS_MODULE}.services.submit_selection")
     @patch(f"{PERMISSIONS_MODULE}.CourseEnrollment")
-    def test_submit_not_enrolled_returns_403(self, mock_enrollment, mock_submit, mock_get_config):
+    def test_submit_not_enrolled_returns_403(
+        self, mock_enrollment: MagicMock, mock_submit: MagicMock, mock_get_config: MagicMock,
+    ) -> None:
         """Not enrolled returns 403 (from service layer)."""
         mock_enrollment.is_enrolled.return_value = True  # permission passes
         mock_get_config.return_value = BLOCK_CONFIG
@@ -139,7 +149,9 @@ class SelectionSubmitViewTest(TestCase):
     @patch(f"{VIEWS_MODULE}._get_block_config")
     @patch(f"{VIEWS_MODULE}.services.submit_selection")
     @patch(f"{PERMISSIONS_MODULE}.CourseEnrollment")
-    def test_submit_cohort_failure_returns_500(self, mock_enrollment, mock_submit, mock_get_config):
+    def test_submit_cohort_failure_returns_500(
+        self, mock_enrollment: MagicMock, mock_submit: MagicMock, mock_get_config: MagicMock,
+    ) -> None:
         """Cohort creation failure returns 500."""
         mock_enrollment.is_enrolled.return_value = True
         mock_get_config.return_value = BLOCK_CONFIG
@@ -156,7 +168,7 @@ class SelectionSubmitViewTest(TestCase):
         response = self.view(request)
         self.assertEqual(response.status_code, http_status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    def test_submit_unauthenticated_returns_403(self):
+    def test_submit_unauthenticated_returns_403(self) -> None:
         """Unauthenticated request returns 403."""
         request = self.factory.post(
             "/api/group-selection/v1/select/",
@@ -175,7 +187,7 @@ class SelectionSubmitViewTest(TestCase):
 class SelectionDetailViewTest(TestCase):
     """Tests for GET /api/group-selection/v1/selection/{usage_key}/"""
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.factory = APIRequestFactory()
         self.user = create_test_user()
         self.view = SelectionDetailView.as_view()
@@ -183,7 +195,12 @@ class SelectionDetailViewTest(TestCase):
     @patch(f"{VIEWS_MODULE}._get_block_config")
     @patch(f"{VIEWS_MODULE}.CourseStaffRole")
     @patch(f"{VIEWS_MODULE}.CourseInstructorRole")
-    def test_learner_gets_own_selection(self, mock_instructor, mock_staff, mock_get_config):
+    def test_learner_gets_own_selection(
+        self,
+        mock_instructor: MagicMock,
+        mock_staff: MagicMock,
+        mock_get_config: MagicMock,
+    ) -> None:
         """Learner gets their own selection."""
         mock_staff.return_value.has_user.return_value = False
         mock_instructor.return_value.has_user.return_value = False
@@ -209,7 +226,9 @@ class SelectionDetailViewTest(TestCase):
 
     @patch(f"{VIEWS_MODULE}.CourseStaffRole")
     @patch(f"{VIEWS_MODULE}.CourseInstructorRole")
-    def test_learner_no_selection_returns_404(self, mock_instructor, mock_staff):
+    def test_learner_no_selection_returns_404(
+        self, mock_instructor: MagicMock, mock_staff: MagicMock,
+    ) -> None:
         """Learner with no selection gets 404."""
         mock_staff.return_value.has_user.return_value = False
         mock_instructor.return_value.has_user.return_value = False
@@ -223,7 +242,9 @@ class SelectionDetailViewTest(TestCase):
 
     @patch(f"{VIEWS_MODULE}.CourseStaffRole")
     @patch(f"{VIEWS_MODULE}.CourseInstructorRole")
-    def test_staff_gets_all_selections(self, mock_instructor, mock_staff):
+    def test_staff_gets_all_selections(
+        self, mock_instructor: MagicMock, mock_staff: MagicMock,
+    ) -> None:
         """Staff gets paginated list of all selections."""
         mock_staff.return_value.has_user.return_value = True
         mock_instructor.return_value.has_user.return_value = False
@@ -255,7 +276,7 @@ class SelectionDetailViewTest(TestCase):
 class StaffOverrideViewTest(TestCase):
     """Tests for POST /api/group-selection/v1/staff/override/"""
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.factory = APIRequestFactory()
         self.staff_user = create_test_user(username="staffuser")
         self.target_user = create_test_user(username="targetuser")
@@ -266,8 +287,12 @@ class StaffOverrideViewTest(TestCase):
     @patch(f"{PERMISSIONS_MODULE}.CourseStaffRole")
     @patch(f"{PERMISSIONS_MODULE}.CourseInstructorRole")
     def test_staff_override_success(
-        self, mock_instructor, mock_staff, mock_override, mock_get_config,
-    ):
+        self,
+        mock_instructor: MagicMock,
+        mock_staff: MagicMock,
+        mock_override: MagicMock,
+        mock_get_config: MagicMock,
+    ) -> None:
         """Staff override returns 200."""
         mock_staff.return_value.has_user.return_value = True
         mock_instructor.return_value.has_user.return_value = False
@@ -299,7 +324,9 @@ class StaffOverrideViewTest(TestCase):
 
     @patch(f"{PERMISSIONS_MODULE}.CourseStaffRole")
     @patch(f"{PERMISSIONS_MODULE}.CourseInstructorRole")
-    def test_non_staff_returns_403(self, mock_instructor, mock_staff):
+    def test_non_staff_returns_403(
+        self, mock_instructor: MagicMock, mock_staff: MagicMock,
+    ) -> None:
         """Non-staff user gets 403."""
         mock_staff.return_value.has_user.return_value = False
         mock_instructor.return_value.has_user.return_value = False
@@ -324,8 +351,12 @@ class StaffOverrideViewTest(TestCase):
     @patch(f"{PERMISSIONS_MODULE}.CourseStaffRole")
     @patch(f"{PERMISSIONS_MODULE}.CourseInstructorRole")
     def test_override_invalid_user_returns_404(
-        self, mock_instructor, mock_staff, mock_override, mock_get_config,
-    ):
+        self,
+        mock_instructor: MagicMock,
+        mock_staff: MagicMock,
+        mock_override: MagicMock,
+        mock_get_config: MagicMock,
+    ) -> None:
         """Override for nonexistent user returns 404."""
         mock_staff.return_value.has_user.return_value = True
         mock_instructor.return_value.has_user.return_value = False

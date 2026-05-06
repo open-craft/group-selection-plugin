@@ -2,10 +2,15 @@
 Core business logic for group_selection_plugin.
 """
 
-import logging
+from __future__ import annotations
 
+import logging
+from typing import Any, Optional
+
+from django.contrib.auth.models import AbstractUser
 from django.db import transaction
-from opaque_keys.edx.keys import CourseKey
+from django.db.models.query import QuerySet
+from opaque_keys.edx.keys import CourseKey, UsageKey
 
 from openedx.core.djangoapps.course_groups.cohorts import (
     add_user_to_cohort,
@@ -32,7 +37,10 @@ from .models import LearnerSelection, SelectionEvent
 log = logging.getLogger(__name__)
 
 
-def ensure_cohorts_for_block(course_key, block_config):
+def ensure_cohorts_for_block(
+    course_key: CourseKey,
+    block_config: dict[str, Any],
+) -> list[dict[str, Any]]:
     """
     Ensure cohort infrastructure is ready for a Group Selection block.
 
@@ -48,8 +56,9 @@ def ensure_cohorts_for_block(course_key, block_config):
     cohort_mappings = []
 
     for choice_id in block_config["choices"]:
-        group_id = block_config["choice_group_map"][choice_id]
-        partition_id = block_config["choice_partition_map"][choice_id]
+        mapping = block_config["choice_group_partition_map"][choice_id]
+        group_id = mapping["group_id"]
+        partition_id = mapping["partition_id"]
 
         existing_link = CourseUserGroupPartitionGroup.objects.filter(
             partition_id=partition_id,
@@ -97,7 +106,11 @@ def ensure_cohorts_for_block(course_key, block_config):
     return cohort_mappings
 
 
-def _find_cohort_for_content_group(course_key, partition_id, group_id):
+def _find_cohort_for_content_group(
+    course_key: CourseKey,
+    partition_id: int,
+    group_id: int,
+) -> Optional[CourseUserGroup]:
     """
     Find the cohort linked to a specific content group.
 
@@ -115,7 +128,11 @@ def _find_cohort_for_content_group(course_key, partition_id, group_id):
     return None
 
 
-def _resolve_cohort_for_choice(course_key, choice_id, block_config):
+def _resolve_cohort_for_choice(
+    course_key: CourseKey,
+    choice_id: str,
+    block_config: dict[str, Any],
+) -> tuple[int, int, CourseUserGroup]:
     """
     Validate a choice and find its linked cohort, auto-creating if needed.
 
@@ -127,8 +144,9 @@ def _resolve_cohort_for_choice(course_key, choice_id, block_config):
             f"Choice '{choice_id}' is not valid"
         )
 
-    group_id = block_config["choice_group_map"][choice_id]
-    partition_id = block_config["choice_partition_map"][choice_id]
+    mapping = block_config["choice_group_partition_map"][choice_id]
+    group_id = mapping["group_id"]
+    partition_id = mapping["partition_id"]
 
     cohort = _find_cohort_for_content_group(course_key, partition_id, group_id)
     if cohort is None:
@@ -149,7 +167,7 @@ def _resolve_cohort_for_choice(course_key, choice_id, block_config):
     return group_id, partition_id, cohort
 
 
-def _assign_to_cohort(user, cohort, course_key):
+def _assign_to_cohort(user: AbstractUser, cohort: CourseUserGroup, course_key: CourseKey) -> None:
     """Assign a user to a cohort, treating 'already a member' as success."""
     try:
         add_user_to_cohort(cohort, user)
@@ -165,15 +183,25 @@ def _assign_to_cohort(user, cohort, course_key):
 
 
 def _save_selection_and_log_event(
-    user, course_key, usage_key, choice_id, group_id, cohort, event_type, acted_by,
-):
+    user: AbstractUser,
+    course_key: CourseKey,
+    usage_key: UsageKey,
+    choice_id: str,
+    group_id: int,
+    cohort: CourseUserGroup,
+    event_type: str,
+    acted_by: AbstractUser,
+) -> LearnerSelection:
     """
     Create or update LearnerSelection and log a SelectionEvent.
 
     Returns:
         The created or updated LearnerSelection.
     """
-    existing = LearnerSelection.objects.filter(user=user, usage_key=usage_key).first()
+    try:
+        existing = LearnerSelection.objects.get(user=user, usage_key=usage_key)
+    except LearnerSelection.DoesNotExist:
+        existing = None
 
     if existing:
         previous_choice_id = existing.choice_id
@@ -211,7 +239,13 @@ def _save_selection_and_log_event(
 
 
 @transaction.atomic
-def submit_selection(user, usage_key, course_key, choice_id, block_config):
+def submit_selection(
+    user: AbstractUser,
+    usage_key: UsageKey,
+    course_key: CourseKey,
+    choice_id: str,
+    block_config: dict[str, Any],
+) -> LearnerSelection:
     """
     Submit or update a learner's group selection.
 
@@ -223,8 +257,10 @@ def submit_selection(user, usage_key, course_key, choice_id, block_config):
             f"User {user.id} is not enrolled in course {course_key}"
         )
 
-    existing = LearnerSelection.objects.filter(user=user, usage_key=usage_key).first()
-    if existing and not block_config.get("allow_change", False):
+    has_existing = LearnerSelection.objects.filter(
+        user=user, usage_key=usage_key,
+    ).exists()
+    if has_existing and not block_config.get("allow_change", False):
         raise SelectionLockedException(
             f"User {user.id} already has a selection for block {usage_key} and changes are not allowed"
         )
@@ -236,7 +272,7 @@ def submit_selection(user, usage_key, course_key, choice_id, block_config):
     _assign_to_cohort(user, cohort, course_key)
 
     event_type = (
-        SelectionEvent.EventType.CHANGED if existing
+        SelectionEvent.EventType.CHANGED if has_existing
         else SelectionEvent.EventType.SELECTED
     )
     return _save_selection_and_log_event(
@@ -245,7 +281,14 @@ def submit_selection(user, usage_key, course_key, choice_id, block_config):
 
 
 @transaction.atomic
-def staff_override_selection(staff_user, target_user, usage_key, course_key, choice_id, block_config):
+def staff_override_selection(
+    staff_user: AbstractUser,
+    target_user: AbstractUser,
+    usage_key: UsageKey,
+    course_key: CourseKey,
+    choice_id: str,
+    block_config: dict[str, Any],
+) -> LearnerSelection:
     """
     Staff override of a learner's group selection.
 
@@ -269,7 +312,7 @@ def staff_override_selection(staff_user, target_user, usage_key, course_key, cho
     )
 
 
-def get_learner_selection(user, usage_key):
+def get_learner_selection(user: AbstractUser, usage_key: UsageKey) -> Optional[LearnerSelection]:
     """
     Get the current selection for a learner on a block.
 
@@ -279,7 +322,7 @@ def get_learner_selection(user, usage_key):
     return LearnerSelection.objects.filter(user=user, usage_key=usage_key).first()
 
 
-def get_block_selections(usage_key, course_key):
+def get_block_selections(usage_key: UsageKey, course_key: CourseKey) -> QuerySet[LearnerSelection]:
     """
     Get all selections for a block (staff-only use).
 
@@ -292,7 +335,7 @@ def get_block_selections(usage_key, course_key):
     ).select_related("user")
 
 
-def get_course_content_groups(course_key_str):
+def get_course_content_groups(course_key_str: str) -> list[dict[str, Any]]:
     """
     Fetch content groups defined in the course's Group Configurations.
 

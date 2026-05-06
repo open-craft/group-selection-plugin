@@ -25,6 +25,8 @@ _MOCK_MODULES = [
     "xmodule",
     "xmodule.modulestore",
     "xmodule.modulestore.django",
+    "xmodule.partitions",
+    "xmodule.partitions.partitions_service",
 ]
 
 for mod_name in _MOCK_MODULES:

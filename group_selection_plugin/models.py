@@ -2,6 +2,8 @@
 Data models for group_selection_plugin.
 """
 
+from __future__ import annotations
+
 from django.conf import settings
 from django.db import models
 
@@ -31,7 +33,7 @@ class LearnerSelection(TimeStampedModel):
             models.Index(fields=["course_key", "usage_key"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"LearnerSelection(user={self.user_id}, block={self.usage_key}, choice={self.choice_id})"
 
 
@@ -64,7 +66,7 @@ class SelectionEvent(TimeStampedModel):
         related_name="selection_actions_performed",
     )
 
-    def __str__(self):
+    def __str__(self) -> str:
         return (
             f"SelectionEvent(user={self.user_id}, block={self.usage_key}, "
             f"type={self.event_type}, choice={self.new_choice_id})"

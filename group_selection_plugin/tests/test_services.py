@@ -4,6 +4,8 @@ Tests for group_selection_plugin service layer.
 All edx-platform imports are mocked since they're not available outside the LMS runtime.
 """
 
+from __future__ import annotations
+
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
@@ -42,8 +44,8 @@ class EnsureCohortsForBlockTest(TestCase):
     @patch(f"{SERVICES_MODULE}.CourseUserGroupPartitionGroup")
     @patch(f"{SERVICES_MODULE}.CourseUserGroup")
     def test_ensure_cohorts_creates_cohorts(
-        self, mock_cug, mock_cugpg, mock_set_cohorted,
-    ):
+        self, mock_cug: MagicMock, mock_cugpg: MagicMock, mock_set_cohorted: MagicMock,
+    ) -> None:
         """Creates cohorts for all mapped content groups and links them."""
         # No existing links.
         mock_cugpg.objects.filter.return_value.select_related.return_value.first.return_value = None
@@ -68,8 +70,8 @@ class EnsureCohortsForBlockTest(TestCase):
     @patch(f"{SERVICES_MODULE}.CourseUserGroupPartitionGroup")
     @patch(f"{SERVICES_MODULE}.CourseUserGroup")
     def test_ensure_cohorts_enables_course_cohorts(
-        self, mock_cug, mock_cugpg, mock_set_cohorted,
-    ):
+        self, mock_cug: MagicMock, mock_cugpg: MagicMock, mock_set_cohorted: MagicMock,
+    ) -> None:
         """Enables cohort settings for the course."""
         mock_cugpg.objects.filter.return_value.select_related.return_value.first.return_value = None
         mock_cohort = MagicMock(id=1, name="Test")
@@ -84,8 +86,8 @@ class EnsureCohortsForBlockTest(TestCase):
     @patch(f"{SERVICES_MODULE}.CourseUserGroupPartitionGroup")
     @patch(f"{SERVICES_MODULE}.CourseUserGroup")
     def test_ensure_cohorts_skips_existing(
-        self, mock_cug, mock_cugpg, mock_set_cohorted,
-    ):
+        self, mock_cug: MagicMock, mock_cugpg: MagicMock, mock_set_cohorted: MagicMock,
+    ) -> None:
         """Does not duplicate cohorts that already exist and are linked."""
         existing_link = MagicMock()
         existing_link.course_user_group.id = 50
@@ -105,8 +107,8 @@ class EnsureCohortsForBlockTest(TestCase):
     @patch(f"{SERVICES_MODULE}.CourseUserGroupPartitionGroup")
     @patch(f"{SERVICES_MODULE}.CourseUserGroup")
     def test_ensure_cohorts_names_from_content_group(
-        self, mock_cug, mock_cugpg, mock_set_cohorted,
-    ):
+        self, mock_cug: MagicMock, mock_cugpg: MagicMock, mock_set_cohorted: MagicMock,
+    ) -> None:
         """Created cohort names match the content group names from block config."""
         mock_cugpg.objects.filter.return_value.select_related.return_value.first.return_value = None
         mock_cohort = MagicMock(id=1)
@@ -126,15 +128,15 @@ class EnsureCohortsForBlockTest(TestCase):
 class SubmitSelectionTest(TestCase):
     """Tests for submit_selection."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.user = create_test_user()
 
     @patch(f"{SERVICES_MODULE}.add_user_to_cohort")
     @patch(f"{SERVICES_MODULE}.CourseUserGroupPartitionGroup")
     @patch(f"{SERVICES_MODULE}.CourseEnrollment")
     def test_submit_selection_happy_path(
-        self, mock_enrollment, mock_cugpg, mock_add_cohort,
-    ):
+        self, mock_enrollment: MagicMock, mock_cugpg: MagicMock, mock_add_cohort: MagicMock,
+    ) -> None:
         """New selection creates LearnerSelection + SelectionEvent + assigns cohort."""
         mock_enrollment.is_enrolled.return_value = True
 
@@ -162,8 +164,8 @@ class SubmitSelectionTest(TestCase):
     @patch(f"{SERVICES_MODULE}.CourseUserGroupPartitionGroup")
     @patch(f"{SERVICES_MODULE}.CourseEnrollment")
     def test_submit_selection_locked(
-        self, mock_enrollment, mock_cugpg, mock_add_cohort,
-    ):
+        self, mock_enrollment: MagicMock, mock_cugpg: MagicMock, mock_add_cohort: MagicMock,
+    ) -> None:
         """When allow_change=False and selection exists, raises exception."""
         mock_enrollment.is_enrolled.return_value = True
 
@@ -186,8 +188,8 @@ class SubmitSelectionTest(TestCase):
     @patch(f"{SERVICES_MODULE}.CourseUserGroupPartitionGroup")
     @patch(f"{SERVICES_MODULE}.CourseEnrollment")
     def test_submit_selection_change_allowed(
-        self, mock_enrollment, mock_cugpg, mock_add_cohort,
-    ):
+        self, mock_enrollment: MagicMock, mock_cugpg: MagicMock, mock_add_cohort: MagicMock,
+    ) -> None:
         """When allow_change=True and selection exists, updates and reassigns cohort."""
         mock_enrollment.is_enrolled.return_value = True
 
@@ -221,7 +223,7 @@ class SubmitSelectionTest(TestCase):
         self.assertEqual(event.new_choice_id, "option_b")
 
     @patch(f"{SERVICES_MODULE}.CourseEnrollment")
-    def test_submit_selection_invalid_choice(self, mock_enrollment):
+    def test_submit_selection_invalid_choice(self, mock_enrollment: MagicMock) -> None:
         """Invalid choice_id raises validation error."""
         mock_enrollment.is_enrolled.return_value = True
 
@@ -236,8 +238,13 @@ class SubmitSelectionTest(TestCase):
     @patch(f"{SERVICES_MODULE}.CourseUserGroupPartitionGroup")
     @patch(f"{SERVICES_MODULE}.CourseEnrollment")
     def test_submit_selection_auto_creates_missing_cohort(
-        self, mock_enrollment, mock_cugpg, mock_cug, mock_set_cohorted, mock_add_cohort,
-    ):
+        self,
+        mock_enrollment: MagicMock,
+        mock_cugpg: MagicMock,
+        mock_cug: MagicMock,
+        mock_set_cohorted: MagicMock,
+        mock_add_cohort: MagicMock,
+    ) -> None:
         """If cohort is missing, falls back to ensure_cohorts_for_block and succeeds."""
         mock_enrollment.is_enrolled.return_value = True
 
@@ -265,7 +272,7 @@ class SubmitSelectionTest(TestCase):
         self.assertEqual(selection.cohort_id, 30)
 
     @patch(f"{SERVICES_MODULE}.CourseEnrollment")
-    def test_submit_selection_not_enrolled(self, mock_enrollment):
+    def test_submit_selection_not_enrolled(self, mock_enrollment: MagicMock) -> None:
         """Unenrolled user raises permission error."""
         mock_enrollment.is_enrolled.return_value = False
 
@@ -278,7 +285,7 @@ class SubmitSelectionTest(TestCase):
 class StaffOverrideTest(TestCase):
     """Tests for staff_override_selection."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.staff_user = create_test_user(username="staffuser")
         self.target_user = create_test_user(username="targetuser")
 
@@ -287,8 +294,12 @@ class StaffOverrideTest(TestCase):
     @patch(f"{SERVICES_MODULE}.CourseInstructorRole")
     @patch(f"{SERVICES_MODULE}.CourseStaffRole")
     def test_staff_override(
-        self, mock_staff_role, mock_instructor_role, mock_cugpg, mock_add_cohort,
-    ):
+        self,
+        mock_staff_role: MagicMock,
+        mock_instructor_role: MagicMock,
+        mock_cugpg: MagicMock,
+        mock_add_cohort: MagicMock,
+    ) -> None:
         """Staff can override regardless of allow_change setting."""
         mock_staff_role.return_value.has_user.return_value = True
         mock_instructor_role.return_value.has_user.return_value = False
@@ -312,7 +323,9 @@ class StaffOverrideTest(TestCase):
 
     @patch(f"{SERVICES_MODULE}.CourseInstructorRole")
     @patch(f"{SERVICES_MODULE}.CourseStaffRole")
-    def test_staff_override_non_staff(self, mock_staff_role, mock_instructor_role):
+    def test_staff_override_non_staff(
+        self, mock_staff_role: MagicMock, mock_instructor_role: MagicMock,
+    ) -> None:
         """Non-staff user cannot use override."""
         mock_staff_role.return_value.has_user.return_value = False
         mock_instructor_role.return_value.has_user.return_value = False

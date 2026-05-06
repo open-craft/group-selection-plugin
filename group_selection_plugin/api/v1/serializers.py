@@ -2,6 +2,10 @@
 Serializers for group_selection_plugin API.
 """
 
+from __future__ import annotations
+
+from typing import Any
+
 from rest_framework import serializers
 
 
@@ -18,7 +22,7 @@ class SelectionResponseSerializer(serializers.Serializer):
     updated_at = serializers.DateTimeField(source="modified")
     can_change = serializers.SerializerMethodField()
 
-    def get_can_change(self, obj):
+    def get_can_change(self, obj: Any) -> bool:
         return self.context.get("can_change", True)
 
 

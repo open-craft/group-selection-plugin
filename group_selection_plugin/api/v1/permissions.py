@@ -2,14 +2,20 @@
 Permissions for group_selection_plugin API.
 """
 
+from __future__ import annotations
+
+from typing import Optional
+
+from django.http import HttpRequest
 from rest_framework.permissions import BasePermission
+from rest_framework.views import APIView
 
 from common.djangoapps.student.models import CourseEnrollment
 from common.djangoapps.student.roles import CourseStaffRole, CourseInstructorRole
 from opaque_keys.edx.keys import CourseKey
 
 
-def _get_course_key(request, view):
+def _get_course_key(request: HttpRequest, view: APIView) -> Optional[CourseKey]:
     """Extract and parse the course key from the request or view kwargs."""
     course_key_str = (
         request.data.get("course_key")
@@ -24,7 +30,7 @@ def _get_course_key(request, view):
 class IsEnrolledInCourse(BasePermission):
     """Learner must be enrolled in the course."""
 
-    def has_permission(self, request, view):
+    def has_permission(self, request: HttpRequest, view: APIView) -> bool:
         course_key = _get_course_key(request, view)
         if not course_key:
             return False
@@ -34,7 +40,7 @@ class IsEnrolledInCourse(BasePermission):
 class IsCourseStaffOrInstructor(BasePermission):
     """User must have staff or instructor role on the course."""
 
-    def has_permission(self, request, view):
+    def has_permission(self, request: HttpRequest, view: APIView) -> bool:
         course_key = _get_course_key(request, view)
         if not course_key:
             return False
