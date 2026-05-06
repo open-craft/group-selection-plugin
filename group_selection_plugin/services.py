@@ -5,6 +5,7 @@ Core business logic for group_selection_plugin.
 import logging
 
 from django.db import transaction
+from opaque_keys.edx.keys import CourseKey
 
 from openedx.core.djangoapps.course_groups.cohorts import (
     add_user_to_cohort,
@@ -16,6 +17,8 @@ from openedx.core.djangoapps.course_groups.models import (
 )
 from common.djangoapps.student.models import CourseEnrollment
 from common.djangoapps.student.roles import CourseStaffRole, CourseInstructorRole
+from xmodule.modulestore.django import modulestore
+from xmodule.partitions.partitions_service import get_all_partitions_for_course
 
 from .exceptions import (
     CohortCreationFailedException,
@@ -287,3 +290,29 @@ def get_block_selections(usage_key, course_key):
         usage_key=usage_key,
         course_key=course_key,
     ).select_related("user")
+
+
+def get_course_content_groups(course_key_str):
+    """
+    Fetch content groups defined in the course's Group Configurations.
+
+    Args:
+        course_key_str: Course key as a string (e.g. 'course-v1:Org+Course+Run').
+
+    Returns:
+        List of dicts with 'partition_id', 'group_id', and 'name' keys.
+    """
+    course_key = CourseKey.from_string(course_key_str)
+    course = modulestore().get_course(course_key)
+
+    content_groups = []
+    for partition in get_all_partitions_for_course(course):
+        if partition.scheme and partition.scheme.name == "cohort":
+            for group in partition.groups:
+                content_groups.append({
+                    "partition_id": partition.id,
+                    "group_id": group.id,
+                    "name": group.name,
+                })
+
+    return content_groups
