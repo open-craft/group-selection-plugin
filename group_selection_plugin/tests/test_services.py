@@ -237,7 +237,7 @@ class SubmitSelectionTest(TestCase):
     @patch(f"{SERVICES_MODULE}.CourseUserGroup")
     @patch(f"{SERVICES_MODULE}.CourseUserGroupPartitionGroup")
     @patch(f"{SERVICES_MODULE}.CourseEnrollment")
-    def test_submit_selection_auto_creates_missing_cohort(
+    def test_submit_selection_missing_cohort_raises_error(
         self,
         mock_enrollment: MagicMock,
         mock_cugpg: MagicMock,
@@ -245,31 +245,16 @@ class SubmitSelectionTest(TestCase):
         mock_set_cohorted: MagicMock,
         mock_add_cohort: MagicMock,
     ) -> None:
-        """If cohort is missing, falls back to ensure_cohorts_for_block and succeeds."""
+        """If cohort is missing, raises CohortCreationFailedException (staff should configure cohorts)."""
         mock_enrollment.is_enrolled.return_value = True
 
-        # First call (from _find_cohort) returns None.
-        # Then ensure_cohorts_for_block loops over all 3 choices, each calling first().
-        # Then _find_cohort is called again and should return the link.
-        mock_link = MagicMock()
-        mock_link.course_user_group.id = 30
-        mock_link.course_user_group.name = "Group A"
-        mock_cugpg.objects.filter.return_value.select_related.return_value.first.side_effect = [
-            None,           # _find_cohort: no cohort yet
-            mock_link,      # ensure_cohorts: choice 1
-            mock_link,      # ensure_cohorts: choice 2
-            mock_link,      # ensure_cohorts: choice 3
-            mock_link,      # _find_cohort retry: found
-        ]
-        mock_cug.COHORT = "cohort"
-        mock_cohort = MagicMock(id=30, name="Group A")
-        mock_cug.objects.create.return_value = mock_cohort
+        # _find_cohort returns None — cohort was never set up.
+        mock_cugpg.objects.filter.return_value.select_related.return_value.first.return_value = None
 
-        selection = submit_selection(
-            self.user, USAGE_KEY, COURSE_KEY, "option_a", BLOCK_CONFIG,
-        )
-
-        self.assertEqual(selection.cohort_id, 30)
+        with self.assertRaises(CohortCreationFailedException):
+            submit_selection(
+                self.user, USAGE_KEY, COURSE_KEY, "option_a", BLOCK_CONFIG,
+            )
 
     @patch(f"{SERVICES_MODULE}.CourseEnrollment")
     def test_submit_selection_not_enrolled(self, mock_enrollment: MagicMock) -> None:

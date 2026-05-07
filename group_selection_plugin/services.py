@@ -150,19 +150,10 @@ def _resolve_cohort_for_choice(
 
     cohort = _find_cohort_for_content_group(course_key, partition_id, group_id)
     if cohort is None:
-        # Fallback: auto-create cohorts and retry.
-        log.info(
-            "Cohort not found for group_id=%d, partition_id=%d in course %s. "
-            "Running ensure_cohorts_for_block as fallback.",
-            group_id, partition_id, course_key,
+        raise CohortCreationFailedException(
+            f"No cohort found for content group "
+            f"(partition_id={partition_id}, group_id={group_id}) in course {course_key}"
         )
-        ensure_cohorts_for_block(course_key, block_config)
-        cohort = _find_cohort_for_content_group(course_key, partition_id, group_id)
-        if cohort is None:
-            raise CohortCreationFailedException(
-                f"Could not find or create cohort for content group "
-                f"(partition_id={partition_id}, group_id={group_id}) in course {course_key}"
-            )
 
     return group_id, partition_id, cohort
 
@@ -299,6 +290,9 @@ def staff_override_selection(
         raise NotStaffException(
             f"User {staff_user.id} does not have staff/instructor role on course {course_key}"
         )
+
+    # Ensure cohort infrastructure exists before resolving.
+    ensure_cohorts_for_block(course_key, block_config)
 
     group_id, _, cohort = _resolve_cohort_for_choice(
         course_key, choice_id, block_config,
