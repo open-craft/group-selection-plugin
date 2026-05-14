@@ -1,0 +1,9 @@
+# Additional requirements for development and testing
+-c constraints.txt
+
+-r base.in
+
+pytest
+pytest-cov
+pytest-django
+factory-boy

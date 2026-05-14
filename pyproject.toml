@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "group-selection-plugin"
+dynamic = ["version"]
+description = "Open edX plugin for learner group selection backed by cohorts"
+readme = {file = "README.md", content-type = "text/markdown"}
+authors = [{name = "OpenCraft"}]
+license = {text = "AGPL-3.0"}
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Framework :: Django",
+    "Framework :: Django :: 4.2",
+]
+
+[project.entry-points]
+"lms.djangoapp" = {group_selection_plugin = "group_selection_plugin.apps:GroupSelectionPluginConfig"}
+"cms.djangoapp" = {group_selection_plugin = "group_selection_plugin.apps:GroupSelectionPluginConfig"}
+
+[project.urls]
+Homepage = "https://github.com/open-craft/group-selection-plugin"
+
+[tool.setuptools]
+packages = {find = {include = ["group_selection_plugin", "group_selection_plugin.*"], exclude = ["*tests*"]}}
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = {attr = "group_selection_plugin.__version__"}
+
+[tool.setuptools.package-data]
+group_selection_plugin = []
+
+[tool.bumpversion]
+current_version = "0.1.0"
+commit = true
+tag = true
+
+[[tool.bumpversion.files]]
+filename = "group_selection_plugin/__init__.py"
+
+[tool.isort]
+include_trailing_comma = true
+indent = "    "
+line_length = 120
+multi_line_output = 3
